@@ -95,3 +95,19 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+uint64
+sys_trace(void)
+{
+  //remember its argument in a new var in the proc
+  int n;
+  //find the arguments passed by user code from trap frame
+  //user code places arguments for exec in registers a0 and a1
+  //put system call number in a7
+
+  if(argint(0, &n) < 0){//read from register a0
+    return -1;
+  } 
+  myproc() -> mask = n;
+  return 0;
+}
