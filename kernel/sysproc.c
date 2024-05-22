@@ -7,6 +7,11 @@
 #include "spinlock.h"
 #include "proc.h"
 
+#include "sysinfo.h"
+uint64 num_freemem();
+uint64 num_unusedproc();
+
+
 uint64
 sys_exit(void)
 {
@@ -109,5 +114,28 @@ sys_trace(void)
     return -1;
   } 
   myproc() -> mask = n;
+  return 0;
+}
+
+uint64
+sys_sysinfo(void)
+{ 
+  struct sysinfo st; 
+  uint64 addr; //read from a1 the addr of the struct
+  struct proc *p = myproc();
+  if(argaddr(0, &addr) < 0){//read from register a0
+    return -1;
+  } 
+
+  //get the info 
+  st.freemem = num_freemem();
+  st.nproc = num_unusedproc();
+
+  //write back to user
+  if (copyout(p->pagetable, addr, (char *)&st, sizeof(st)) < 0) {
+    return -1;
+  }
+
+
   return 0;
 }
