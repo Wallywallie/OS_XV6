@@ -440,3 +440,30 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
     return -1;
   }
 }
+
+//helps to implement vmprint
+void helper(pagetable_t pagetable,char** pre, int depth) {
+  
+  for (int i = 0; i < 512; i++) {//iterate through pagetable
+    pte_t pte = pagetable[i];
+  
+    if (pte & PTE_V) {
+      uint64 pa = PTE2PA(pte); 
+      printf("%s%d: pte %p pa %p\n",pre[depth], i, pte, pa);
+      if ((pte & (PTE_R|PTE_W|PTE_X)) == 0) {
+        //if a pte is valid, but is not readable, writable, and executable
+        //it has a child
+        helper((pagetable_t)pa, pre, depth+1);
+      }
+    }
+}
+}
+
+//prints the addr of pagetable pte and pa.
+void vmprint(pagetable_t pagetable) {
+  printf("page table %p\n", pagetable);
+  char* pre[3] = {
+    "..","....", "......"
+  };
+  helper(pagetable, pre, 0);
+}
