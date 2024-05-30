@@ -121,6 +121,14 @@ kvmmap(uint64 va, uint64 pa, uint64 sz, int perm)
     panic("kvmmap");
 }
 
+// add a mapping to proc->kpagetable.
+void
+uvmkpgtmap(pagetable_t pagetable, uint64 va, uint64 pa, uint64 sz, int perm)
+{
+  if(mappages(pagetable, va, sz, pa, perm) != 0)
+    panic("uvmkpgtmap");
+}
+
 // translate a kernel virtual address to
 // a physical address. only needed for
 // addresses on the stack.
@@ -467,3 +475,4 @@ void vmprint(pagetable_t pagetable) {
   };
   helper(pagetable, pre, 0);
 }
+

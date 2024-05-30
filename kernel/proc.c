@@ -18,6 +18,9 @@ struct spinlock pid_lock;
 extern void forkret(void);
 static void wakeup1(struct proc *chan);
 static void freeproc(struct proc *p);
+void uvmkpgtmap(pagetable_t, uint64 , uint64 , uint64 , int );
+pagetable_t kpgtinit();
+void free_pgt(pagetable_t kpgt, int depth);
 
 extern char trampoline[]; // trampoline.S
 
@@ -26,9 +29,8 @@ void
 procinit(void)
 {
   struct proc *p;
-  
   initlock(&pid_lock, "nextpid");
-  for(p = proc; p < &proc[NPROC]; p++) {
+  for(p = proc; p < &proc[NPROC]; p++) {//iterate through proc table
       initlock(&p->lock, "proc");
 
       // Allocate a page for the process's kernel stack.
@@ -39,7 +41,7 @@ procinit(void)
         panic("kalloc");
       uint64 va = KSTACK((int) (p - proc));
       kvmmap(va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
-      p->kstack = va;
+      p->kstack = va;   
   }
   kvminithart();
 }
@@ -91,7 +93,7 @@ allocpid() {
 // If there are no free procs, or a memory allocation fails, return 0.
 static struct proc*
 allocproc(void)
-{
+{ 
   struct proc *p;
 
   for(p = proc; p < &proc[NPROC]; p++) {
@@ -113,6 +115,22 @@ found:
     return 0;
   }
 
+  //initalize proc->kpagetable
+  p->kpagetable = kpgtinit();
+  if(p->kpagetable == 0){
+  freeproc(p);
+  release(&p->lock);
+  return 0;
+  }
+
+  //the addr of kernel stack is pre defined
+  uint64 va = KSTACK((int) (p - proc));
+  uint64 pa = kvmpa(va);
+  memset((void*)pa, 0, PGSIZE);
+  uvmkpgtmap(p->kpagetable, va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
+  //printf("pa: %p va: %p\n", pa, va);
+  p->kstack = va;  
+
   // An empty user page table.
   p->pagetable = proc_pagetable(p);
   if(p->pagetable == 0){
@@ -129,18 +147,56 @@ found:
 
   return p;
 }
+//create a kernel pagetable for each proc
+extern char etext[];
+
+//initialize the kernel pagetable for each process
+pagetable_t kpgtinit()
+{
+  pagetable_t pt = (pagetable_t) kalloc();
+  if (pt == 0) {
+    panic("kalloc");
+  }
+
+  memset(pt, 0, PGSIZE);
+
+  // uart registers
+  uvmkpgtmap(pt,UART0, UART0, PGSIZE, PTE_R | PTE_W);
+
+  // virtio mmio disk interface
+  uvmkpgtmap(pt,VIRTIO0, VIRTIO0, PGSIZE, PTE_R | PTE_W);
+
+  // CLINT
+  uvmkpgtmap(pt,CLINT, CLINT, 0x10000, PTE_R | PTE_W);
+
+  // PLIC
+  uvmkpgtmap(pt,PLIC, PLIC, 0x400000, PTE_R | PTE_W);
+
+  // map kernel text executable and read-only.
+  uvmkpgtmap(pt,KERNBASE, KERNBASE, (uint64)etext-KERNBASE, PTE_R | PTE_X);
+
+  // map kernel data and the physical RAM we'll make use of.
+  uvmkpgtmap(pt,(uint64)etext, (uint64)etext, PHYSTOP-(uint64)etext, PTE_R | PTE_W);
+
+  // map the trampoline for trap entry/exit to
+  // the highest virtual address in the kernel.
+  uvmkpgtmap(pt,TRAMPOLINE, (uint64)trampoline, PGSIZE, PTE_R | PTE_X);
+    return pt;
+}
 
 // free a proc structure and the data hanging from it,
 // including user pages.
 // p->lock must be held.
 static void
 freeproc(struct proc *p)
-{
+{//printf("free\n");
   if(p->trapframe)
     kfree((void*)p->trapframe);
   p->trapframe = 0;
   if(p->pagetable)
-    proc_freepagetable(p->pagetable, p->sz);
+    proc_freepagetable(p->pagetable, p->sz);   
+  if(p->kpagetable)
+    free_pgt(p->kpagetable, 0);    
   p->pagetable = 0;
   p->sz = 0;
   p->pid = 0;
@@ -150,6 +206,29 @@ freeproc(struct proc *p)
   p->killed = 0;
   p->xstate = 0;
   p->state = UNUSED;
+  p->kpagetable=0;
+  p->kstack = 0;
+}
+
+void free_pgt(pagetable_t kpgt, int depth) {
+  //printf("depth: %d", depth);
+  for (int i = 0; i < 512; i++) {//iterate through pagetable
+    pte_t pte = kpgt[i];
+    
+    if (pte & PTE_V) {
+      uint64 pa = PTE2PA(pte); 
+      if ((pte & (PTE_R|PTE_W|PTE_X)) == 0 && depth < 3) {
+        //if a pte is valid, but is not readable, writable, and executable
+        //it has a child
+        free_pgt((pagetable_t)pa,depth+1);
+      }
+      
+    }
+   
+  }
+  kfree((void*)kpgt);
+
+  
 }
 
 // Create a user page table for a given process,
@@ -463,11 +542,17 @@ scheduler(void)
   for(;;){
     // Avoid deadlock by ensuring that devices can interrupt.
     intr_on();
+    //int running_proc = 0;
     
     int found = 0;
     for(p = proc; p < &proc[NPROC]; p++) {
       acquire(&p->lock);
       if(p->state == RUNNABLE) {
+
+        //load process's kernel page table into satp register
+        w_satp(MAKE_SATP(p->kpagetable));
+        sfence_vma();
+
         // Switch to chosen process.  It is the process's job
         // to release its lock and then reacquire it
         // before jumping back to us.
@@ -479,10 +564,19 @@ scheduler(void)
         // It should have changed its p->state before coming back.
         c->proc = 0;
 
+        //!!!switch back to kernel pagetable
+        kvminithart();
+
         found = 1;
-      }
+      }  
+      //if (p->state == RUNNING) {
+      //  running_proc = 1;
+      //}
       release(&p->lock);
     }
+
+
+
 #if !defined (LAB_FS)
     if(found == 0) {
       intr_on();
