@@ -11,7 +11,8 @@ static int loadseg(pde_t *pgdir, uint64 addr, struct inode *ip, uint offset, uin
 
 int
 exec(char *path, char **argv)
-{
+{printf("called exec\n");
+
   char *s, *last;
   int i, off;
   uint64 argc, sz = 0, sp, ustack[MAXARG+1], stackbase;
@@ -51,6 +52,9 @@ exec(char *path, char **argv)
     uint64 sz1;
     if((sz1 = uvmalloc(pagetable, sz, ph.vaddr + ph.memsz)) == 0)
       goto bad;
+    if (sz1 >= PLIC) {
+      goto bad;
+    } 
     sz = sz1;
     if(ph.vaddr % PGSIZE != 0)
       goto bad;
@@ -114,6 +118,10 @@ exec(char *path, char **argv)
   p->sz = sz;
   p->trapframe->epc = elf.entry;  // initial program counter = main
   p->trapframe->sp = sp; // initial stack pointer
+  
+  
+  uvmcopy_pagetable(pagetable, p->kpagetable, 0,sz);
+
   proc_freepagetable(oldpagetable, oldsz);
 
   if (p->pid == 1) {

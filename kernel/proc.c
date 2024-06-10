@@ -128,7 +128,6 @@ found:
   uint64 pa = kvmpa(va);
   memset((void*)pa, 0, PGSIZE);
   uvmkpgtmap(p->kpagetable, va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
-  //printf("pa: %p va: %p\n", pa, va);
   p->kstack = va;  
 
   // An empty user page table.
@@ -189,7 +188,7 @@ pagetable_t kpgtinit()
 // p->lock must be held.
 static void
 freeproc(struct proc *p)
-{//printf("free\n");
+{
   if(p->trapframe)
     kfree((void*)p->trapframe);
   p->trapframe = 0;
@@ -208,6 +207,7 @@ freeproc(struct proc *p)
   p->state = UNUSED;
   p->kpagetable=0;
   p->kstack = 0;
+ 
 }
 
 void free_pgt(pagetable_t kpgt, int depth) {
@@ -294,11 +294,13 @@ userinit(void)
 
   p = allocproc();
   initproc = p;
-  
   // allocate one user page and copy init's instructions
   // and data into it.
   uvminit(p->pagetable, initcode, sizeof(initcode));
   p->sz = PGSIZE;
+
+  uvmcopy_pagetable(p->pagetable, p->kpagetable,0, p->sz);
+  
 
   // prepare for the very first "return" from kernel to user.
   p->trapframe->epc = 0;      // user program counter
@@ -310,6 +312,7 @@ userinit(void)
   p->state = RUNNABLE;
 
   release(&p->lock);
+
 }
 
 // Grow or shrink user memory by n bytes.
@@ -325,8 +328,14 @@ growproc(int n)
     if((sz = uvmalloc(p->pagetable, sz, sz + n)) == 0) {
       return -1;
     }
+    //address cannot be higher than PLIC
+    if (sz >= PLIC) {
+      return -1;
+    }
+    uvmcopy_pagetable(p->pagetable, p->kpagetable, sz-n, sz);
   } else if(n < 0){
-    sz = uvmdealloc(p->pagetable, sz, sz + n);
+    sz = uvmdealloc(p->pagetable, sz-n, sz);
+
   }
   p->sz = sz;
   return 0;
@@ -336,7 +345,7 @@ growproc(int n)
 // Sets up child kernel stack to return as if from fork() system call.
 int
 fork(void)
-{
+{printf("fork\n");
   int i, pid;
   struct proc *np;
   struct proc *p = myproc();
@@ -347,7 +356,12 @@ fork(void)
   }
 
   // Copy user memory from parent to child.
-  if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0){
+  if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0 ){
+    freeproc(np);
+    release(&np->lock);
+    return -1;
+  }
+  if (uvmcopy_pagetable(np->pagetable, np->kpagetable,0, p->sz) < 0) {
     freeproc(np);
     release(&np->lock);
     return -1;

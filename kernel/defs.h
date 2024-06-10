@@ -26,6 +26,8 @@ void            consoleinit(void);
 void            consoleintr(int);
 void            consputc(int);
 
+
+
 // exec.c
 int             exec(char*, char**);
 
@@ -108,6 +110,8 @@ void            yield(void);
 int             either_copyout(int user_dst, uint64 dst, void *src, uint64 len);
 int             either_copyin(void *dst, int user_src, uint64 src, uint64 len);
 void            procdump(void);
+pagetable_t     kpgtinit();
+void            free_pgt(pagetable_t kpgt, int depth);
 
 // swtch.S
 void            swtch(struct context*, struct context*);
@@ -179,6 +183,14 @@ int             copyout(pagetable_t, uint64, char *, uint64);
 int             copyin(pagetable_t, char *, uint64, uint64);
 int             copyinstr(pagetable_t, char *, uint64, uint64);
 void            vmprint(pagetable_t);
+void            uvmkpgtmap(pagetable_t pagetable, uint64 va, uint64 pa, uint64 sz, int perm);
+int             uvmcopy_pagetable(pagetable_t pagetable, pagetable_t kpgt, uint64 oldsz,uint64 newsz) ;
+uint64          kvmdealloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz);
+
+//vmcopyin.c
+
+int copyinstr_new(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max);
+
 // plic.c
 void            plicinit(void);
 void            plicinithart(void);

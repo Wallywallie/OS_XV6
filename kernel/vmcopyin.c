@@ -30,9 +30,22 @@ int
 copyin_new(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len)
 {
   struct proc *p = myproc();
+  //do not manipulate the physical memmory 
+  //but let dst point to actual physical memory
+  //find pa in user pagetable, and write it to kernel pagetable
+  //or write proc pgt to kernel pgt
+  //printf("srca: %p, srca+len: %p\n", srcva, srcva + len);
+  
+
+
+  //how does kernel knows if it's a virtual address
 
   if (srcva >= p->sz || srcva+len >= p->sz || srcva+len < srcva)
     return -1;
+  
+  //uvmcopy_pagetable(p->pagetable, p->kpagetable,srcva,srcva + len*PGSIZE);
+
+
   memmove((void *) dst, (void *)srcva, len);
   stats.ncopyin++;   // XXX lock
   return 0;
@@ -45,9 +58,14 @@ copyin_new(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len)
 int
 copyinstr_new(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
 {
+  
   struct proc *p = myproc();
   char *s = (char *) srcva;
+
+  //uvmcopy_pagetable(p->pagetable, p->kpagetable,srcva, srcva + max);
   
+
+
   stats.ncopyinstr++;   // XXX lock
   for(int i = 0; i < max && srcva + i < p->sz; i++){
     dst[i] = s[i];
