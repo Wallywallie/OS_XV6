@@ -179,6 +179,10 @@ int             copyout(pagetable_t, uint64, char *, uint64);
 int             copyin(pagetable_t, char *, uint64, uint64);
 int             copyinstr(pagetable_t, char *, uint64, uint64);
 void            vmprint(pagetable_t);
+void            free_kpgt(pagetable_t kpgt);
+pagetable_t     kpgtinit();
+
+
 // plic.c
 void            plicinit(void);
 void            plicinithart(void);

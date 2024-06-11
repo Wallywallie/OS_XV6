@@ -47,6 +47,47 @@ kvminit()
   kvmmap(TRAMPOLINE, (uint64)trampoline, PGSIZE, PTE_R | PTE_X);
 }
 
+void kpgtmap(pagetable_t kpgt,uint64 va, uint64 pa, uint64 sz, int perm) {
+    if(mappages(kpgt, va, sz, pa, perm) != 0)
+    panic("kpgtmap");
+}
+
+pagetable_t kpgtinit() {
+  pagetable_t kpgt;
+  int i;
+  kpgt = uvmcreate();
+  //starting from 1, because addr below PLIC are in idx 0
+  for (i = 1; i < 512; i++) {
+    kpgt[i] = kernel_pagetable[i];
+  }
+  kpgtmap(kpgt, UART0, UART0, PGSIZE, PTE_R | PTE_W);
+  kpgtmap(kpgt, VIRTIO0, VIRTIO0, PGSIZE, PTE_R | PTE_W);
+  kpgtmap(kpgt, CLINT, CLINT, 0x10000, PTE_R | PTE_W);
+  kpgtmap(kpgt, PLIC, PLIC, 0x400000, PTE_R | PTE_W);
+
+  return kpgt;
+
+}
+void free_kpgt(pagetable_t kpgt) {
+  pte_t pte = kpgt[0];
+  pagetable_t level1 = (pagetable_t)PTE2PA(pte);
+
+
+  for (int i = 0; i < 512; i++) {//iterate through pagetable
+    pte_t p = level1[i];
+    if (p & PTE_V) {
+      pagetable_t level2 = (pagetable_t )PTE2PA(p);
+      kfree((void*)level2);
+      level1[i] = 0;
+    }
+  }
+  kfree((void*)level1);
+  kfree((void*)kpgt);
+  
+}
+
+
+
 // Switch h/w page table register to the kernel's page table,
 // and enable paging.
 void
@@ -120,6 +161,8 @@ kvmmap(uint64 va, uint64 pa, uint64 sz, int perm)
   if(mappages(kernel_pagetable, va, sz, pa, perm) != 0)
     panic("kvmmap");
 }
+
+
 
 // translate a kernel virtual address to
 // a physical address. only needed for
