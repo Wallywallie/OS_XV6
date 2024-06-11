@@ -52,6 +52,8 @@ void kpgtmap(pagetable_t kpgt,uint64 va, uint64 pa, uint64 sz, int perm) {
     panic("kpgtmap");
 }
 
+//initialize kpagetable
+//share the level2 and level3 pagetables
 pagetable_t kpgtinit() {
   pagetable_t kpgt;
   int i;
@@ -68,6 +70,8 @@ pagetable_t kpgtinit() {
   return kpgt;
 
 }
+
+//free kpagetable
 void free_kpgt(pagetable_t kpgt) {
   pte_t pte = kpgt[0];
   pagetable_t level1 = (pagetable_t)PTE2PA(pte);
@@ -84,6 +88,30 @@ void free_kpgt(pagetable_t kpgt) {
   kfree((void*)level1);
   kfree((void*)kpgt);
   
+}
+
+//copy mappings from pagetable to kpagetable
+void copy2kpgt(pagetable_t pagetable, pagetable_t kpgt, uint64 oldsz, uint64 newsz) {
+  uint64 i;
+  pte_t* pte;
+  pte_t* pte2;
+
+  if (newsz >= PLIC) {
+    panic("copy2kpgt: addr not higher than PLIC");
+  }
+  for (i = oldsz; i < newsz; i += PGSIZE) {
+    if ((pte = walk(pagetable,i,0)) == 0) {
+      panic("copy2kpgt: pte not exist");
+    }
+    if ((*pte & PTE_V) == 0) {
+      panic("copy2kpgt: pte not valid");
+    }
+    if ((pte2 = walk(kpgt,i,1)) == 0) {
+      panic("copy2kpgt: fail to walk");
+    }
+
+    *pte2 = *pte & (~ PTE_U);
+  }
 }
 
 
@@ -422,6 +450,7 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 int
 copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len)
 {
+  return copyin_new(pagetable, dst, srcva, len);
   uint64 n, va0, pa0;
 
   while(len > 0){
@@ -448,6 +477,7 @@ copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len)
 int
 copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
 {
+  return copyinstr_new(pagetable, dst, srcva,max);
   uint64 n, va0, pa0;
   int got_null = 0;
 
