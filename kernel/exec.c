@@ -123,6 +123,10 @@ exec(char *path, char **argv)
 
   copy2kpgt(p->pagetable, p->kpagetable, 0, p->sz);
 
+  if (p->pid == 1) {
+    vmprint(p->pagetable);
+  }
+
   return argc; // this ends up in a0, the first argument to main(argc, argv)
 
  bad:

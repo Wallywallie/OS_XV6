@@ -112,15 +112,6 @@ found:
     return 0;
   }
 
-  //initalize proc->kpagetable
-  p->kpagetable = kpgtinit();
-  if(p->kpagetable == 0){
-  freeproc(p);
-  release(&p->lock);
-  return 0;
-  }
- 
-
   // An empty user page table.
   p->pagetable = proc_pagetable(p);
   if(p->pagetable == 0){
@@ -129,13 +120,13 @@ found:
     return 0;
   }
 
+  //initalize proc->kpagetable
   p->kpagetable = kpgtinit();
-    if(p->kpagetable == 0){
-    freeproc(p);
-    release(&p->lock);
-    return 0;
+  if(p->kpagetable == 0){
+  freeproc(p);
+  release(&p->lock);
+  return 0;
   }
-
 
 
   // Set up new context to start executing at forkret,
@@ -174,8 +165,7 @@ freeproc(struct proc *p)
   p->killed = 0;
   p->xstate = 0;
   p->state = UNUSED;
-  p->kpagetable=0;
-  p->kstack = 0;
+
  
 }
 
@@ -507,16 +497,14 @@ scheduler(void)
   for(;;){
     // Avoid deadlock by ensuring that devices can interrupt.
     intr_on();
-    //int running_proc = 0;
+
     
     int found = 0;
     for(p = proc; p < &proc[NPROC]; p++) {
       acquire(&p->lock);
       if(p->state == RUNNABLE) {
 
-        //load process's kernel page table into satp register
-        w_satp(MAKE_SATP(p->kpagetable));
-        sfence_vma();
+
 
         // Switch to chosen process.  It is the process's job
         // to release its lock and then reacquire it
@@ -524,6 +512,7 @@ scheduler(void)
         p->state = RUNNING;
         c->proc = p;
 
+        //load process's kernel page table into satp register
         w_satp(MAKE_SATP(p->kpagetable));
         sfence_vma();
 
@@ -539,9 +528,7 @@ scheduler(void)
 
         found = 1;
       }  
-      //if (p->state == RUNNING) {
-      //  running_proc = 1;
-      //}
+
       release(&p->lock);
     }
 
