@@ -15,6 +15,8 @@ extern char etext[];  // kernel.ld sets this to end of kernel code.
 
 extern char trampoline[]; // trampoline.S
 
+
+
 /*
  * create a direct-map page table for the kernel.
  */
@@ -144,7 +146,7 @@ walk(pagetable_t pagetable, uint64 va, int alloc)
     panic("walk");
 
   for(int level = 2; level > 0; level--) {
-    pte_t *pte = &pagetable[PX(level, va)];
+    pte_t *pte = &pagetable[PX(level, va)]; //get the offset in 9 bits
     if(*pte & PTE_V) {
       pagetable = (pagetable_t)PTE2PA(*pte);
     } else {
@@ -190,8 +192,6 @@ kvmmap(uint64 va, uint64 pa, uint64 sz, int perm)
     panic("kvmmap");
 }
 
-
-
 // translate a kernel virtual address to
 // a physical address. only needed for
 // addresses on the stack.
@@ -218,7 +218,7 @@ kvmpa(uint64 va)
 // allocate a needed page-table page.
 int
 mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
-{
+{ 
   uint64 a, last;
   pte_t *pte;
 
@@ -227,16 +227,21 @@ mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
   for(;;){
     if((pte = walk(pagetable, a, 1)) == 0)
       return -1;
-    if(*pte & PTE_V)
+    if(*pte & PTE_V){
       panic("remap");
+
+    }
     *pte = PA2PTE(pa) | perm | PTE_V;
+   
     if(a == last)
       break;
     a += PGSIZE;
     pa += PGSIZE;
+    
   }
   return 0;
 }
+
 
 // Remove npages of mappings starting from va. va must be
 // page-aligned. The mappings must exist.
@@ -317,7 +322,7 @@ uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
       kfree(mem);
       uvmdealloc(pagetable, a, oldsz);
       return 0;
-    }
+    }     
   }
   return newsz;
 }
@@ -451,11 +456,13 @@ int
 copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len)
 {
   return copyin_new(pagetable, dst, srcva, len);
-  uint64 n, va0, pa0;
 
+  //iterate through pagetable to find out pa, and copy from pa to dst
+  
+  uint64 n, va0, pa0;
   while(len > 0){
     va0 = PGROUNDDOWN(srcva);
-    pa0 = walkaddr(pagetable, va0);
+    pa0 = walkaddr(pagetable, va0); //get pa by iterating through pgt
     if(pa0 == 0)
       return -1;
     n = PGSIZE - (srcva - va0);
@@ -468,6 +475,7 @@ copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len)
     srcva = va0 + PGSIZE;
   }
   return 0;
+  
 }
 
 // Copy a null-terminated string from user to kernel.
@@ -476,8 +484,11 @@ copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len)
 // Return 0 on success, -1 on error.
 int
 copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
+
 {
   return copyinstr_new(pagetable, dst, srcva,max);
+
+  
   uint64 n, va0, pa0;
   int got_null = 0;
 
@@ -512,6 +523,7 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
   } else {
     return -1;
   }
+  
 }
 
 //helps to implement vmprint
@@ -540,3 +552,4 @@ void vmprint(pagetable_t pagetable) {
   };
   helper(pagetable, pre, 0);
 }
+

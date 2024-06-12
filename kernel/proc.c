@@ -26,9 +26,8 @@ void
 procinit(void)
 {
   struct proc *p;
-  
   initlock(&pid_lock, "nextpid");
-  for(p = proc; p < &proc[NPROC]; p++) {
+  for(p = proc; p < &proc[NPROC]; p++) {//iterate through proc table
       initlock(&p->lock, "proc");
 
       // Allocate a page for the process's kernel stack.
@@ -39,7 +38,7 @@ procinit(void)
         panic("kalloc");
       uint64 va = KSTACK((int) (p - proc));
       kvmmap(va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
-      p->kstack = va;
+      p->kstack = va;   
   }
   kvminithart();
 }
@@ -91,7 +90,7 @@ allocpid() {
 // If there are no free procs, or a memory allocation fails, return 0.
 static struct proc*
 allocproc(void)
-{
+{ 
   struct proc *p;
 
   for(p = proc; p < &proc[NPROC]; p++) {
@@ -112,6 +111,15 @@ found:
     release(&p->lock);
     return 0;
   }
+
+  //initalize proc->kpagetable
+  p->kpagetable = kpgtinit();
+  if(p->kpagetable == 0){
+  freeproc(p);
+  release(&p->lock);
+  return 0;
+  }
+ 
 
   // An empty user page table.
   p->pagetable = proc_pagetable(p);
@@ -139,6 +147,8 @@ found:
   return p;
 }
 
+
+
 // free a proc structure and the data hanging from it,
 // including user pages.
 // p->lock must be held.
@@ -164,7 +174,11 @@ freeproc(struct proc *p)
   p->killed = 0;
   p->xstate = 0;
   p->state = UNUSED;
+  p->kpagetable=0;
+  p->kstack = 0;
+ 
 }
+
 
 // Create a user page table for a given process,
 // with no user memory, but with trampoline pages.
@@ -229,11 +243,11 @@ userinit(void)
 
   p = allocproc();
   initproc = p;
-  
   // allocate one user page and copy init's instructions
   // and data into it.
   uvminit(p->pagetable, initcode, sizeof(initcode));
   p->sz = PGSIZE;
+
 
   //copy from pagetable to kpagetable
   copy2kpgt(p->pagetable, p->kpagetable, 0, p->sz);
@@ -248,6 +262,7 @@ userinit(void)
   p->state = RUNNABLE;
 
   release(&p->lock);
+
 }
 
 // Grow or shrink user memory by n bytes.
@@ -264,9 +279,14 @@ growproc(int n)
       return -1;
     }
 
-    
+    //address cannot be higher than PLIC
+    if (sz >= PLIC) {
+      return -1;
+    }
+
   } else if(n < 0){
-    sz = uvmdealloc(p->pagetable, sz, sz + n);
+    sz = uvmdealloc(p->pagetable, sz-n, sz);
+
   }
   copy2kpgt(p->pagetable, p->kpagetable, p->sz, sz);
   p->sz = sz;
@@ -288,7 +308,7 @@ fork(void)
   }
 
   // Copy user memory from parent to child.
-  if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0){
+  if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0 ){
     freeproc(np);
     release(&np->lock);
     return -1;
@@ -487,11 +507,17 @@ scheduler(void)
   for(;;){
     // Avoid deadlock by ensuring that devices can interrupt.
     intr_on();
+    //int running_proc = 0;
     
     int found = 0;
     for(p = proc; p < &proc[NPROC]; p++) {
       acquire(&p->lock);
       if(p->state == RUNNABLE) {
+
+        //load process's kernel page table into satp register
+        w_satp(MAKE_SATP(p->kpagetable));
+        sfence_vma();
+
         // Switch to chosen process.  It is the process's job
         // to release its lock and then reacquire it
         // before jumping back to us.
@@ -507,12 +533,20 @@ scheduler(void)
         // It should have changed its p->state before coming back.
         c->proc = 0;
 
+
+        //!!!switch back to kernel pagetable
         kvminithart();
 
         found = 1;
-      }
+      }  
+      //if (p->state == RUNNING) {
+      //  running_proc = 1;
+      //}
       release(&p->lock);
     }
+
+
+
 #if !defined (LAB_FS)
     if(found == 0) {
       intr_on();

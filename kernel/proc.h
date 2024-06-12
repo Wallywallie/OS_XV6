@@ -104,5 +104,6 @@ struct proc {
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
 
-  pagetable_t kpagetable;
+
+  pagetable_t kpagetable;       //kernel page table for this process
 };
