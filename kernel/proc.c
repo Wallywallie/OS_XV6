@@ -275,7 +275,7 @@ growproc(int n)
     }
 
   } else if(n < 0){
-    sz = uvmdealloc(p->pagetable, sz-n, sz);
+    sz = uvmdealloc(p->pagetable, sz, sz + n);
 
   }
   copy2kpgt(p->pagetable, p->kpagetable, p->sz, sz);
