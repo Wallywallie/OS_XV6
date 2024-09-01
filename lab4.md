@@ -5,3 +5,6 @@ previous stack frame pointer -> (-16)fp
 # trap
 
 Every tick, the hardware clock forces an interrupt, which is handled in usertrap() in kernel/trap.c.
+
+# clock interrupt
+定时器中断，操作系统内核的时间片的轮转调度

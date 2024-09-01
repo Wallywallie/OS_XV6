@@ -46,9 +46,17 @@ usertrap(void)
   w_stvec((uint64)kernelvec);
 
   struct proc *p = myproc();
-  
+
+
+
+
+
+
+
   // save user program counter.
   p->trapframe->epc = r_sepc();
+
+  
   
   if(r_scause() == 8){
     // system call
@@ -76,9 +84,27 @@ usertrap(void)
   if(p->killed)
     exit(-1);
 
+
   // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2)
+  if(which_dev == 2){
+    //Every tick, the hardware clock forces an interrupt
+    p->ticks += 1;
+    
+    // save all other registers for sigreturn
+    if (p->alarm_interval != 0) { //there has to be a interval
+      if (p->ticks >= p->alarm_interval) {
+        if (p->in_alarm == 0) { // should not be in alarm
+          *p->interrupt_trapframe = *p->trapframe;
+          p->trapframe->epc = (uint64)p->handler;
+          p->in_alarm = 1;
+
+        }
+      } 
+    }
     yield();
+  }
+
+    
 
   usertrapret();
 }

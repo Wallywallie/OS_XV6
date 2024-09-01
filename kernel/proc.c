@@ -106,7 +106,19 @@ allocproc(void)
 
 found:
   p->pid = allocpid();
+
+  //initialize for added part of proc
   p->ticks = 0;
+  p->handler = 0;
+  p->alarm_interval = 0;
+  p->in_alarm = 0;
+
+  // Allocate a interrupt_trapframe page.
+  if((p->interrupt_trapframe = (struct trapframe *)kalloc()) == 0){
+    release(&p->lock);
+    return 0;
+  }
+
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
     release(&p->lock);
@@ -150,6 +162,12 @@ freeproc(struct proc *p)
   p->killed = 0;
   p->xstate = 0;
   p->state = UNUSED;
+
+  p->ticks = 0;
+  p->handler = 0;
+  p->alarm_interval = 0;
+  p->in_alarm = 0;
+  
 }
 
 // Create a user page table for a given process,
