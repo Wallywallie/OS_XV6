@@ -10,7 +10,7 @@
 #include "defs.h"
 
 void freerange(void *pa_start, void *pa_end);
-
+int ref_cnt[PHYSTOP / PGSIZE + 1];
 extern char end[]; // first address after kernel.
                    // defined by kernel.ld.
 
@@ -48,6 +48,10 @@ kfree(void *pa)
 {
   struct run *r;
 
+  if( ref_cnt[(uint64)pa / PGSIZE] > 0) {
+    return;
+  }
+  //printf("%d is set free\n", (uint64)pa / PGSIZE);
   if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
     panic("kfree");
 
@@ -72,11 +76,15 @@ kalloc(void)
 
   acquire(&kmem.lock);
   r = kmem.freelist;
+  
   if(r)
     kmem.freelist = r->next;
   release(&kmem.lock);
 
-  if(r)
+  if(r){
     memset((char*)r, 5, PGSIZE); // fill with junk
+    ref_cnt[(uint64)r / PGSIZE] = 1;
+    //printf("%d ", (uint64)r / PGSIZE);
+  }  
   return (void*)r;
 }

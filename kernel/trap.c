@@ -15,6 +15,7 @@ extern char trampoline[], uservec[], userret[];
 void kernelvec();
 
 extern int devintr();
+extern int ref_cnt[];
 
 void
 trapinit(void)
@@ -36,6 +37,7 @@ trapinithart(void)
 void
 usertrap(void)
 {
+  //printf("called usertrap: %d\n", r_scause());
   int which_dev = 0;
 
   if((r_sstatus() & SSTATUS_SPP) != 0)
@@ -49,8 +51,9 @@ usertrap(void)
   
   // save user program counter.
   p->trapframe->epc = r_sepc();
+  //printf("excecuting %x\n", r_sepc());
   
-  if(r_scause() == 8){
+  if((r_scause() == 8 )){
     // system call
 
     if(p->killed)
@@ -65,7 +68,44 @@ usertrap(void)
     intr_on();
 
     syscall();
-  } else if((which_dev = devintr()) != 0){
+  } else if (r_scause() == 15) {//**
+    char *mem;
+    uint flags;
+
+    //check if its a PTE_COW
+    uint64 va = r_stval();
+    uint64 va0 = PGROUNDDOWN(va);
+    pagetable_t pgt = p->pagetable;
+    pte_t *pte0 = walk(pgt, va0, 0);
+    uint64 pa0 = walkaddr(pgt,va0);
+
+    if ((*pte0 & PTE_COW)) {//**
+      //printf("COW: %x, epc:%x\n", r_stval(), p->trapframe->epc);
+
+      flags = (PTE_FLAGS(*pte0) | PTE_W) & (~PTE_COW);
+      if((mem = kalloc()) == 0){
+        printf("usertrap: pid %d failed to kalloc\n", p->pid);
+
+        p->killed = 1;
+        
+      } else {
+        //uint64 destmem = (uint64) mem + (va - va0);
+
+        memmove((void*) mem, (char*)pa0, PGSIZE);
+        kfree((void*)pa0);
+        *pte0 = 0;
+
+        //printf("*pte: %x, va: %x\n", *pte0, va0);
+
+        if(mappages(pgt, va0, PGSIZE, (uint64)mem, flags) != 0){
+          kfree(mem);
+          printf("usertrap: failed to map\n");
+        } 
+      }    
+    }
+    //p->trapframe->epc += 4; /**
+  }
+  else if((which_dev = devintr()) != 0){
     // ok
   } else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
@@ -73,8 +113,13 @@ usertrap(void)
     p->killed = 1;
   }
 
-  if(p->killed)
+  if(p->killed){
+    printf("kill the proc: %d \n", p->pid);
+
     exit(-1);
+
+  }
+    
 
   // give up the CPU if this is a timer interrupt.
   if(which_dev == 2)

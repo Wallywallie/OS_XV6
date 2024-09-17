@@ -18,7 +18,7 @@ struct spinlock pid_lock;
 extern void forkret(void);
 static void wakeup1(struct proc *chan);
 static void freeproc(struct proc *p);
-
+extern int ref_cnt[];
 extern char trampoline[]; // trampoline.S
 
 // initialize the proc table at boot time.
@@ -135,7 +135,12 @@ found:
 // p->lock must be held.
 static void
 freeproc(struct proc *p)
-{
+ 
+{   
+  uint64 pa1 = walkaddr(p->pagetable, 0);
+  uint64 pa2 = walkaddr(p->pagetable, p->sz-1);
+  printf("proc: %d, pa %x - pa %x has been freed\n", p->pid,pa1, pa2);
+  printf("but pa: %x ref is %d\n", pa1, ref_cnt[pa1/PGSIZE]);
   if(p->trapframe)
     kfree((void*)p->trapframe);
   p->trapframe = 0;
@@ -273,6 +278,12 @@ fork(void)
     release(&np->lock);
     return -1;
   }
+  printf("fork: %d %d\n", p->pid, np->pid);
+  //uint64 pte_new = (uint64)walk(np->pagetable, 0, 0);
+  //uint64 pte = (uint64)walk(p->pagetable, 0, 0);
+  //printf("fork pte_new: %d\n", pte_new);
+  //printf("fork pte: %d\n", pte);
+
   np->sz = p->sz;
 
   np->parent = p;
