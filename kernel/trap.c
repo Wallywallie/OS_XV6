@@ -37,7 +37,7 @@ void
 usertrap(void)
 {
   int which_dev = 0;
-
+  
   if((r_sstatus() & SSTATUS_SPP) != 0)
     panic("usertrap: not from user mode");
 
@@ -64,8 +64,49 @@ usertrap(void)
     // so don't enable until done with those registers.
     intr_on();
 
+
+
     syscall();
-  } else if((which_dev = devintr()) != 0){
+    if (r_scause() == 15) {
+      p->trapframe->epc -= 8;
+    }
+  } else if(r_scause() == 13 || r_scause() == 15){
+
+    uint64 va = r_stval();    
+    uint64 va0 = PGROUNDDOWN(va);
+    //printf("pid: %d,pagefaut: %d, va: %x, p->sz: %x\n", p->pid,r_scause(), va, p->sz)
+
+
+    if (va < p->sz ) {
+      pte_t* pte = walk(p->pagetable, va,0);
+      if (pte != 0 && (*pte & PTE_V) != 0 &&  (*pte & PTE_U) == 0 ) {
+        //if va has been mapped and can not be accesed by user
+        p->killed = 1;
+      } else{
+        char *mem;
+        mem = kalloc();
+        if(mem == 0){
+          
+          p->killed = 1;
+          //printf("usertrap: fail to kalloc\n");
+        } else {
+          memset(mem, 0, PGSIZE);
+          //printf("pid: %d,pagefaut: %d, va: %x, p->sz: %x\n", p->pid,r_scause(), va, p->sz);
+
+          
+          if(mappages(p->pagetable, va0, PGSIZE, (uint64)mem, PTE_W|PTE_X|PTE_R|PTE_U) != 0){
+            kfree(mem);
+            printf("usertrap: fail to map");
+          } 
+        }
+      }
+    //printf("map va %x \n", va0);
+    } else {
+      p->killed = 1;
+    }
+
+  }
+  else if((which_dev = devintr()) != 0){
     // ok
   } else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
@@ -73,8 +114,10 @@ usertrap(void)
     p->killed = 1;
   }
 
-  if(p->killed)
+  if(p->killed){
     exit(-1);
+  }
+    
 
   // give up the CPU if this is a timer interrupt.
   if(which_dev == 2)

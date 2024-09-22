@@ -171,8 +171,11 @@ filewrite(struct file *f, uint64 addr, int n)
       if(r != n1)
         panic("short filewrite");
       i += r;
+
     }
+    
     ret = (i == n ? n : -1);
+
   } else {
     panic("filewrite");
   }
