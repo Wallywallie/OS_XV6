@@ -65,21 +65,25 @@ threetest()
     exit(-1);
   }
 
+
   pid1 = fork();
   if(pid1 < 0){
     printf("fork failed\n");
     exit(-1);
   }
+
   if(pid1 == 0){
     pid2 = fork();
     if(pid2 < 0){
       printf("fork failed");
       exit(-1);
     }
+
     if(pid2 == 0){
       for(char *q = p; q < p + (sz/5)*4; q += 4096){
         *(int*)q = getpid();
       }
+
       for(char *q = p; q < p + (sz/5)*4; q += 4096){
         if(*(int*)q != getpid()){
           printf("wrong content\n");

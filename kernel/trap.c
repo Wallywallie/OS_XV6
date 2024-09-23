@@ -80,17 +80,17 @@ usertrap(void)
     uint64 pa0 = walkaddr(pgt,va0);
 
     if ((*pte0 & PTE_COW)) {//**
-      //printf("COW: %x, epc:%x\n", r_stval(), p->trapframe->epc);
+      printf("COW: %x, epc:%x\n", r_stval(), p->trapframe->epc);
 
       flags = (PTE_FLAGS(*pte0) | PTE_W) & (~PTE_COW);
       if((mem = kalloc()) == 0){
         printf("usertrap: pid %d failed to kalloc\n", p->pid);
-
         p->killed = 1;
         
       } else {
         //uint64 destmem = (uint64) mem + (va - va0);
-
+        ref_cnt[pa0/PGSIZE] -= 1; //*
+        
         memmove((void*) mem, (char*)pa0, PGSIZE);
         kfree((void*)pa0);
         *pte0 = 0;
@@ -98,6 +98,7 @@ usertrap(void)
         //printf("*pte: %x, va: %x\n", *pte0, va0);
 
         if(mappages(pgt, va0, PGSIZE, (uint64)mem, flags) != 0){
+          ref_cnt[(uint64)mem/PGSIZE] -= 1;
           kfree(mem);
           printf("usertrap: failed to map\n");
         } 

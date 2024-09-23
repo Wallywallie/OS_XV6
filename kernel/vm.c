@@ -362,9 +362,9 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
     //printf("%d is set to %d\n",pa/PGSIZE, ref_cnt[pa/PGSIZE] );
 
   }
-  uint64 pa1 = walkaddr(old, 0);
-  uint64 pa2 = walkaddr(old, sz-1);
-  printf("pa:%x - pa: %x , sz: %x, is set to %d\n",pa1,pa2, sz,ref_cnt[pa1/PGSIZE]);
+  //uint64 pa1 = walkaddr(old, 0);
+  //uint64 pa2 = walkaddr(old, sz-1);
+  //printf("pa:%x - pa: %x , sz: %x, is set to %d\n",pa1,pa2, sz,ref_cnt[pa1/PGSIZE]);
   //create a user pagetable for child proc   
 
   return 0;
@@ -423,37 +423,47 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 int
 copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 { 
-  //printf("called copyout\n");
+
   uint64 n, va0, pa0;
   char *mem;
   uint flags;
   while(len > 0){
-    pte_t *pte = walk(pagetable, dstva, 0);
+    
+
+    
     va0 = PGROUNDDOWN(dstva);
     pa0 = walkaddr(pagetable, va0);
-    if(pa0 == 0)
+    printf("dstva: %p, pa0: %p, src: %p, len: %d\n", dstva, pa0, src,len );
+    if(pa0 == 0){
       return -1;
+    }
+      
     n = PGSIZE - (dstva - va0);
     if(n > len)
       n = len;
-    
+  
+    pte_t *pte = walk(pagetable, dstva, 0);
     if ((*pte & PTE_COW)) {
-      
       flags = (PTE_FLAGS(*pte) | PTE_W) & (~PTE_COW);//*
       if((mem = kalloc()) == 0){
         panic("copyout: failed to kalloc\n");
       } 
-      uint64 destmem = (uint64) mem + ((dstva - va0));//**
-      printf("writing to COW, pa: %x\n",destmem );
-      *pte = 0;
-      memmove((void*) destmem, src, n);
-      
+      memmove((void*) mem, (char*)pa0, PGSIZE);//*
+      ref_cnt[pa0/PGSIZE] -= 1;
+      kfree((void*)pa0);
 
-      if(mappages(pagetable, dstva, n, (uint64)mem, flags) != 0){
+      uint64 destmem = (uint64) mem + ((dstva - va0));//**
+      printf("copyout: cow, len: %x, n: %x, dstva-a0: %x, va0: %x, mem: %x\n", len, n, (dstva - va0), va0, (uint64)mem);
+
+      memmove((void*) destmem, src, n);
+      *pte = 0;
+      if(mappages(pagetable, dstva, n, destmem, flags) != 0){
+        ref_cnt[(uint64)mem / PGSIZE] -= 1;
         kfree(mem);
         panic("copyout: failed to map\n");
       }     
-    } else if (*pte & PTE_W) {
+
+    } else {
       //printf("write to pa: %x\n", pa0 + (dstva - va0));
       memmove((void *)(pa0 + (dstva - va0)), src, n);
     }
